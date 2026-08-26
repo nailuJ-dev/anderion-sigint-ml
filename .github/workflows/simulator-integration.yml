@@ -14,11 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout SIGINT SDK
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: sdk
       - name: Checkout spectra-sim
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ github.repository_owner }}/spectra-sim
           ref: ${{ vars.SPECTRA_SIM_REF || 'main' }}
