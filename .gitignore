@@ -1,0 +1,12 @@
+/target
+**/*.rs.bk
+.env
+.env.*
+!.env.example
+coverage/
+artifacts/
+*.profraw
+*.profdata
+.DS_Store
+.idea/
+.vscode/

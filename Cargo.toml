@@ -1,0 +1,54 @@
+[package]
+name = "anderion-sigint-ml"
+version = "0.4.1"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+description = "Secure, sensor-agnostic machine-learning SDK for signal-observation classification, anomaly detection, open-set recognition, similarity, adaptation, and evaluation."
+repository = "https://github.com/nailuJ-dev/anderion-sigint-ml"
+readme = "README.md"
+keywords = ["machine-learning", "signal", "embeddings", "anomaly-detection", "open-set"]
+categories = ["science", "algorithms"]
+publish = false
+
+[features]
+default = []
+server = ["dep:axum", "dep:tokio"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+thiserror = "2"
+axum = { version = "0.8", optional = true, features = ["json"] }
+tokio = { version = "1", optional = true, features = ["macros", "rt-multi-thread", "net", "signal"] }
+
+[dev-dependencies]
+proptest = "1"
+
+[[bin]]
+name = "anderion-sigint-serve"
+path = "src/bin/serve.rs"
+required-features = ["server"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "allow"
+
+[lints.clippy]
+all = "warn"
+
+[[example]]
+name = "build_reference_bundle"
+path = "examples/build_reference_bundle.rs"
+required-features = ["server"]
+
+[[bin]]
+name = "sigint-golden-demo"
+path = "src/bin/golden_demo.rs"

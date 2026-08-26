@@ -1,0 +1,50 @@
+name: Simulator integration
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  spectra-sim-golden-path:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout SIGINT SDK
+        uses: actions/checkout@v4
+        with:
+          path: sdk
+      - name: Checkout spectra-sim
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/spectra-sim
+          ref: ${{ vars.SPECTRA_SIM_REF || 'main' }}
+          path: sim
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.85'
+      - name: Generate physics-based I/Q
+        working-directory: sim
+        run: cargo run --release -- sigint examples/scenarios/sigint_urban.json --out "$RUNNER_TEMP/sim-sigint"
+      - name: Run SIGINT Golden Path on simulator output
+        working-directory: sdk
+        run: |
+          cargo run --release --bin sigint-golden-demo -- \
+            --training demo-data/golden-path/training.json \
+            --evaluation demo-data/golden-path/evaluation.json \
+            --scenario "$RUNNER_TEMP/sim-sigint/sigint_scenario.json" \
+            --output "$RUNNER_TEMP/sigint-result.json"
+      - name: Validate result JSON
+        run: |
+          python - <<'PY'
+          import json, os
+          p=os.path.join(os.environ['RUNNER_TEMP'],'sigint-result.json')
+          d=json.load(open(p))
+          assert d['report']['predicted_label']
+          assert d['replay'] in ('Exact','DecisionEquivalent')
+          assert d['note']
+          PY

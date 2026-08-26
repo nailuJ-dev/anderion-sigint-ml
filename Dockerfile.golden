@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1.7
+FROM rust:1.85-bookworm AS builder
+WORKDIR /src
+COPY . .
+RUN cargo build --release --bin sigint-golden-demo
+
+FROM debian:bookworm-slim
+WORKDIR /app
+COPY --from=builder /src/target/release/sigint-golden-demo /usr/local/bin/sigint-golden-demo
+COPY demo-data ./demo-data
+RUN mkdir -p /app/artifacts && chown -R 65532:65532 /app
+USER 65532:65532
+ENTRYPOINT ["sigint-golden-demo"]

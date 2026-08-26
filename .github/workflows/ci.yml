@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo test --all-features
+      - run: cargo run --quiet --bin sigint-golden-demo
+      - run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
+      - name: Verify standalone Golden Path boundary
+        shell: bash
+        run: |
+          python - <<'PY'
+          import tomllib
+          with open("Cargo.toml", "rb") as handle:
+              data = tomllib.load(handle)
+          for section in ("dependencies", "dev-dependencies", "build-dependencies"):
+              for name, spec in data.get(section, {}).items():
+                  if isinstance(spec, dict) and any(key in spec for key in ("git", "path", "registry")):
+                      raise SystemExit(f"external source dependency directive detected: {section}.{name}")
+          PY
+          if grep -Eiq 'reqwest|ureq|TcpStream|UdpSocket|std::net|tokio::net' src/iq.rs src/golden.rs src/bin/golden_demo.rs; then
+            echo "Unexpected network client primitive in Golden Path."
+            exit 1
+          fi
+
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --all-targets --all-features
+
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --lib --no-default-features --target wasm32-unknown-unknown
