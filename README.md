@@ -1,134 +1,275 @@
-# Anderion SIGINT ML
+# anderion-sigint-ml
 
-## Golden Path quickstart
+**Open-source machine learning and signal intelligence primitives for understanding complex RF environments.**
 
-Run an end-to-end raw-I/Q reference scenario with one command:
+`anderion-sigint-ml` is a Rust toolkit for RF signal analysis, classification, anomaly detection and emitter-level reasoning.
 
-```bash
-./scripts/run_golden_path.sh
+The project focuses on a difficult real-world problem:
+
+> RF systems rarely operate in clean, closed-set environments.
+
+Signals overlap. Receivers change. Propagation distorts fingerprints. Unknown emitters appear. Models become overconfident.
+
+This SDK provides building blocks for systems that need to handle those conditions explicitly.
+
+## Core capabilities
+
+### Signal understanding
+
+* RF signal classification
+* I/Q processing
+* temporal analysis
+* signal segmentation
+* anomaly detection
+* open-set recognition
+* uncertainty estimation
+* calibration
+* embeddings and similarity
+* clustering
+* sequence analysis
+
+### Dense-spectrum analysis
+
+Real spectrum captures frequently contain several simultaneous signals.
+
+The SDK can represent a capture as multiple independent signal components instead of forcing an entire observation into one class.
+
+```text
+RF capture
+   ↓
+time-frequency analysis
+   ↓
+component A
+component B
+component C
+   ↓
+individual embeddings / hypotheses
 ```
 
-This trains the bundled public reference model locally, classifies a held-out synthetic I/Q capture, verifies ontology consistency, performs an exact deterministic replay and writes `artifacts/golden-path/result.json`. See `docs/GOLDEN_PATH.md`.
+Components can expose:
 
+* frequency location
+* bandwidth
+* time interval
+* relative power
+* embedding
+* uncertainty
 
-A standalone, sensor-agnostic Rust SDK for machine-learning workflows over user-supplied signal feature vectors. The repository is self-contained: builds, tests, model artifacts, reference algorithms and inference APIs require no hidden service, non-public crate, external model registry or closed runtime component.
+## Receiver-aware RF fingerprinting
 
-## Scope
+A practical RF fingerprinting system must distinguish transmitter characteristics from receiver and channel artifacts.
 
-The SDK starts from numerical feature vectors supplied by the caller. It does not acquire or intercept communications, decode content, exploit protocols, jam emitters, control radios or manipulate the electromagnetic environment. Its public surface is ML representation, classification, novelty/anomaly detection, temporal learning, adaptation, compression, evaluation and deployment support.
+The SDK includes receiver-aware normalization for effects such as:
 
-## P0
+* carrier-frequency offset
+* I/Q gain imbalance
+* I/Q phase imbalance
+* receiver-specific metadata
 
-- validated `Observation`, `Embedding`, `ClassScore`, `Prediction` contracts;
-- pluggable `Encoder`, `Classifier`, `AnomalyDetector`, `Calibrator` traits;
-- deterministic reference encoder;
-- supervised and few-shot prototype classification;
-- confidence abstention, OOD/open-set recognition and anomaly scoring;
-- calibration, uncertainty, similarity search and k-means;
-- temporal aggregation, batch and streaming inference;
-- CPU backend plus public external-backend contract;
-- bounded SHA-256 verified artifacts and model cards;
-- benchmark utilities and optional stateless HTTP service.
+This enables cross-receiver consistency analysis and reduces the risk of treating the same emitter as different identities simply because the capture hardware changed.
 
-## P1
+## Open-world emitter discovery
 
-- masked-context self-supervised learning;
-- continual prototype learning;
-- mean/variance domain adaptation;
-- diagonal metric learning;
-- learned temporal change-point segmentation;
-- sequence classification and weighted ensembles;
-- feature-occlusion explainability;
-- embedding drift monitoring;
-- dataset manifests and leakage-resistant grouped splitting.
+Traditional classifiers assume every signal belongs to a known class.
 
-## P2
+Real RF environments do not.
 
-- `FoundationModel` contract and bounded `FoundationPooler` reference implementation;
-- temporal self-attention and transformer-style residual encoder;
-- variance-bottleneck autoencoder with reconstruction scoring;
-- contrastive representation projector;
-- uncertainty/diversity active-learning selection;
-- zero-shot classification from caller-supplied embedding prototypes;
-- soft-label knowledge distillation into a compact prototype student;
-- symmetric 2–8 bit fake quantization / int8 representation;
-- quantization-aware reference prototype training using fake-quantized embeddings;
-- deterministic magnitude pruning and sparsity metrics;
-- edge parameter profiling and encoder latency benchmarking;
-- generic deterministic synthetic-data adapter;
-- wasm32 core compile gate for non-server deployments.
+The open-world pipeline can:
+
+```text
+observation
+   ↓
+known-class comparison
+   ↓
+open-set decision
+   ↓
+unknown observations
+   ↓
+local clustering
+   ↓
+provisional emitter hypothesis
+```
+
+Repeated unknown observations can therefore become a local provisional emitter rather than remaining an undifferentiated `UNKNOWN`.
+
+New classes can be enrolled using controlled few-shot evidence.
+
+Trusted enrolment requires explicit operator confirmation.
+
+## Spectrum representation
+
+The SDK exposes a compact spectrum encoder interface for:
+
+* RF embeddings
+* masked reconstruction
+* temporal representation
+* next-window prediction
+* few-shot learning
+* anomaly detection
+
+The interface is backend-independent so more advanced learned RF representation models can be integrated without redesigning the rest of the pipeline.
+
+## Evidence graph
+
+A classification result alone is often insufficient.
+
+The SDK can maintain a session-scoped evidence graph linking:
+
+```text
+observation
+   ↓
+signal component
+   ↓
+waveform hypothesis
+   ↓
+emitter hypothesis
+   ↓
+supporting / contradicting evidence
+```
+
+This allows downstream applications to ask:
+
+```text
+Why was this emitter identity proposed?
+What observations support it?
+What contradicts it?
+Why did the system abstain?
+```
+
+The graph is intentionally local and session-scoped.
+
+It is not a persistent global emitter intelligence database.
+
+## Additional ML capabilities
+
+The repository also contains primitives for:
+
+* self-supervised learning
+* contrastive learning
+* metric learning
+* continual learning
+* active learning
+* adaptation
+* drift detection
+* ensembles
+* quantization
+* pruning
+* distillation
+* model evaluation
+* explainability
+* verification
+* deterministic inference pipelines
+
+The objective is not to accumulate model architectures, but to provide reusable RF-specific components that can be tested independently.
+
+## Example use cases
+
+* spectrum monitoring
+* interference investigation
+* RF anomaly detection
+* specific emitter identification
+* unknown signal discovery
+* wireless infrastructure monitoring
+* satellite RF analysis
+* IoT / industrial RF monitoring
+* experimental SIGINT research
+* RF ML benchmarking
+
+## Integration with simulators
+
+The SDK can consume synthetic observations generated by external RF simulators such as `spectra-sim`.
+
+```text
+spectra-sim
+    ↓
+RF / I/Q scenarios
+    ↓
+anderion-sigint-ml
+    ↓
+classification
+discovery
+fingerprinting
+verification
+```
+
+The simulator is not a required runtime dependency.
 
 ## Quick start
 
 ```bash
-cargo run --example basic
-cargo test --all-features
+git clone https://github.com/nailuJ-dev/anderion-sigint-ml.git
+cd anderion-sigint-ml
+
+cargo build --release
+cargo test --all-targets --all-features
 ```
 
-Optional HTTP inference service:
+Run the reference demonstration where available:
 
 ```bash
-cargo run --features server --example build_reference_bundle
-SIGINT_MODEL_MANIFEST=artifacts/reference-model.manifest.json \
-SIGINT_MODEL_PAYLOAD=artifacts/reference-model.json \
-cargo run --features server --bin anderion-sigint-serve
+cargo run --bin golden_demo
 ```
 
-The direct binary binds to loopback by default. Container deployments should place the service behind authenticated TLS ingress and apply request/body/resource limits described in `docs/OPERATIONS.md`.
+## Design principles
 
-## Standalone architecture
+The project favors:
 
-```text
-Caller feature vector
-        |
-        v
-   Encoder / representation learning
-        |
-        v
-     Embedding
-   /    |      \
-  v     v       v
-Class  OOD   Anomaly/Similarity
-  \     |       /
-   \    v      /
- Calibration + uncertainty
-         |
-         v
-     Prediction
+* open-world behavior over forced classification
+* calibrated uncertainty over confidence theater
+* deterministic verification where possible
+* local evidence over opaque decisions
+* modular algorithms over monolithic models
+* explicit receiver/channel effects
+* reproducible evaluation
 
-P2 side workflows:
-foundation pooling | temporal attention | autoencoding | contrastive learning
-active learning | distillation | quantization/QAT | pruning | edge profiling
-```
+## Open-source boundary
 
-Every component is implemented in this repository or supplied explicitly by the SDK caller through a public trait. There is no implicit network access, remote model resolution or hidden dependency path.
+This repository provides local RF intelligence and ML primitives.
 
-## Security
+It deliberately excludes:
 
-`unsafe` is forbidden. Production source denies `unwrap`, `expect` and `panic` through Clippy. Inputs, dimensions and artifacts are bounded; model payloads are checked for schema/type/length/SHA-256 and revalidated after deserialization. CI includes format, Clippy, tests, rustdoc, MSRV, dependency policy and a wasm32 core check.
+* persistent global emitter identity databases
+* cross-site strategic correlation
+* proprietary electromagnetic world models
+* customer-specific intelligence datasets
+* offensive electronic attack capabilities
 
-See `SECURITY.md`, `docs/ARCHITECTURE.md`, `docs/OPERATIONS.md` and `docs/P0_P1_P2_COVERAGE.md`.
+## Contributing
+
+Useful contributions include:
+
+* RF datasets with clear licensing
+* receiver-domain robustness tests
+* open-set algorithms
+* modulation and emitter benchmarks
+* deterministic feature extractors
+* calibration methods
+* evaluation scenarios
+* reproducible research implementations
+
+Research-backed pull requests should include the paper or technical reference that motivated the implementation.
+
+## Support the project
+
+If this SDK helps your research or engineering work:
+
+* star the repository
+* test it on real RF datasets
+* publish reproducible benchmarks
+* report failure cases
+* contribute algorithms or datasets
+* reference the project in research and engineering discussions
+
+Real-world evaluation is especially valuable.
+
+## About
+
+`anderion-sigint-ml` is part of the open-source RF sensing initiative developed by **Anderion Systems**.
+
+The broader objective is to build better foundations for software capable of interpreting the electromagnetic environment rather than treating RF as an opaque stream of samples.
+
+**Anderion Systems** — https://anderion-systems.com
 
 ## License
 
-Apache-2.0.
-
-## Ontology, recurring patterns, and deterministic verification
-
-Version 0.3.0 adds an opt-in, self-contained reliability layer. `OntologyGraph` provides a small typed semantic schema for observations, signal events, classes, embeddings, evidence and recurring patterns. `PatternEngine` detects deterministic repeated sequences and co-occurrences with stable ordering. `VerifiedPipeline` wraps the existing `Pipeline` without changing its behavior and emits a `ResultCertificate` binding the canonical input, model/config digests, ontology/pipeline versions, exact result and deterministic decision digest.
-
-`VerifiedPipeline::replay` reruns inference and returns `ReplayStatus::Exact`, `DecisionEquivalent`, or `NonReproducible`. Exact replay compares canonical SHA-256 result digests. Decision-equivalent replay uses fixed-point decision values and is intentionally weaker than exact replay. Neither mode proves that a model prediction is physically correct; they prove repeatability and policy consistency for the supplied model, input, configuration and runtime behavior.
-
-The ontology and verifier require no external graph database, remote model service, private registry or non-public runtime.
-
-
-
-## Physics simulator compatibility
-
-This release is continuously tested against the public `spectra-sim` contract. Default compatibility target: `spectra-sim 0.1.1`. The integration is file-based JSON only; there is no Cargo or private-service dependency.
-
-## Compatibility
-
-| SDK | spectra-sim |
-|---|---|
-| 0.4.1 | 0.1.1 |
+See the repository `LICENSE` file.

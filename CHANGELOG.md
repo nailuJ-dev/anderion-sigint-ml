@@ -1,3 +1,11 @@
+## 0.5.0
+
+- Dense-spectrum component extraction.
+- Receiver-aware RF normalization.
+- Session-scoped open-world emitter discovery and controlled local enrollment.
+- Deterministic local evidence graph.
+- Compact spectrum encoder interface and reference backend.
+
 
 ## 0.4.0
 
