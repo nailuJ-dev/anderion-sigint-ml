@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::{IqCapture, Result, SdkError};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SignalComponent {
@@ -20,11 +20,24 @@ pub struct DenseSpectrumExtractor {
 
 impl DenseSpectrumExtractor {
     pub fn new(bins: usize, relative_power_threshold: f32) -> Result<Self> {
-        if bins < 8 || bins > 2048 { return Err(SdkError::DimensionLimit { actual: bins, max: 2048 }); }
-        if !relative_power_threshold.is_finite() || !(0.0..=1.0).contains(&relative_power_threshold) || relative_power_threshold == 0.0 {
-            return Err(SdkError::InvalidArgument("relative power threshold must be in (0,1]".into()));
+        if !(8..=2048).contains(&bins) {
+            return Err(SdkError::DimensionLimit {
+                actual: bins,
+                max: 2048,
+            });
         }
-        Ok(Self { bins, relative_power_threshold })
+        if !relative_power_threshold.is_finite()
+            || !(0.0..=1.0).contains(&relative_power_threshold)
+            || relative_power_threshold == 0.0
+        {
+            return Err(SdkError::InvalidArgument(
+                "relative power threshold must be in (0,1]".into(),
+            ));
+        }
+        Ok(Self {
+            bins,
+            relative_power_threshold,
+        })
     }
 
     pub fn extract(&self, capture: &IqCapture) -> Result<Vec<SignalComponent>> {
@@ -46,12 +59,22 @@ impl DenseSpectrumExtractor {
             *dst = re.mul_add(re, im * im);
         }
         let max_power = power.iter().copied().fold(0.0_f64, f64::max);
-        if max_power <= f64::EPSILON { return Ok(Vec::new()); }
+        if max_power <= f64::EPSILON {
+            return Ok(Vec::new());
+        }
         let cutoff = max_power * f64::from(self.relative_power_threshold);
         let mut peaks = Vec::new();
         for bin in 0..bins {
-            let left = if bin == 0 { power[bins - 1] } else { power[bin - 1] };
-            let right = if bin + 1 == bins { power[0] } else { power[bin + 1] };
+            let left = if bin == 0 {
+                power[bins - 1]
+            } else {
+                power[bin - 1]
+            };
+            let right = if bin + 1 == bins {
+                power[0]
+            } else {
+                power[bin + 1]
+            };
             if power[bin] >= cutoff && power[bin] >= left && power[bin] >= right {
                 peaks.push((bin, power[bin]));
             }
@@ -60,7 +83,11 @@ impl DenseSpectrumExtractor {
         let bin_width = capture.sample_rate_hz() / bins as f64;
         let mut out = Vec::with_capacity(peaks.len());
         for (rank, (bin, p)) in peaks.into_iter().enumerate() {
-            let signed_bin = if bin <= bins / 2 { bin as isize } else { bin as isize - bins as isize };
+            let signed_bin = if bin <= bins / 2 {
+                bin as isize
+            } else {
+                bin as isize - bins as isize
+            };
             let relative_db = 10.0 * (p / max_power).max(f64::MIN_POSITIVE).log10();
             out.push(SignalComponent {
                 component_id: format!("component-{rank:03}"),

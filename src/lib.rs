@@ -15,19 +15,19 @@ mod benchmark;
 mod calibration;
 mod classification;
 mod clustering;
-mod continual;
 mod components;
+mod continual;
 mod contrastive;
 mod dataset;
 mod distillation;
 mod drift;
 mod edge;
 mod embedding;
-mod ensemble;
 mod emitter_discovery;
-mod evidence_graph;
+mod ensemble;
 mod error;
 mod evaluation;
+mod evidence_graph;
 mod explainability;
 mod foundation;
 mod golden;
@@ -67,8 +67,8 @@ pub use autoencoder::VarianceAutoencoder;
 pub use calibration::TemperatureScaler;
 pub use classification::PrototypeClassifier;
 pub use clustering::{KMeansResult, kmeans};
-pub use continual::OnlinePrototypeClassifier;
 pub use components::{DenseSpectrumExtractor, SignalComponent};
+pub use continual::OnlinePrototypeClassifier;
 pub use contrastive::ContrastiveProjector;
 pub use dataset::{DatasetRow, DatasetSplit, grouped_split};
 pub use distillation::{DistilledPrototypeClassifier, SoftLabelSample};
@@ -77,11 +77,13 @@ pub use edge::{
     EdgeEncoderBenchmark, EdgeParameterProfile, benchmark_encoder, profile_parameter_matrix,
 };
 pub use embedding::HashProjectionEncoder;
-pub use ensemble::WeightedEnsemble;
 pub use emitter_discovery::{EmitterDiscoverySession, EmitterHypothesis, EmitterHypothesisStatus};
-pub use evidence_graph::{EvidenceEdge, EvidenceEdgeKind, EvidenceNode, SessionEvidenceGraph, WhyResult};
+pub use ensemble::WeightedEnsemble;
 pub use error::{Result, SdkError};
 pub use evaluation::{ClassificationMetrics, classification_metrics};
+pub use evidence_graph::{
+    EvidenceEdge, EvidenceEdgeKind, EvidenceNode, SessionEvidenceGraph, WhyResult,
+};
 pub use foundation::{FoundationModel, FoundationPooler};
 pub use metric_learning::DiagonalMetricLearner;
 pub use model::{AnomalyDetector, Calibrator, Classifier, Encoder};

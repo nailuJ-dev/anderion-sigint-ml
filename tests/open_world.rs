@@ -10,7 +10,10 @@ fn repeated_unknown_updates_same_provisional_emitter() {
     assert_eq!(first, second);
     let hypothesis = session.hypotheses().iter().find(|h| h.id == first).unwrap();
     assert_eq!(hypothesis.support_count, 2);
-    assert_eq!(hypothesis.status, EmitterHypothesisStatus::ProvisionalUnknown);
+    assert_eq!(
+        hypothesis.status,
+        EmitterHypothesisStatus::ProvisionalUnknown
+    );
 }
 
 #[test]

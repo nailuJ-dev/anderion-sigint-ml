@@ -1,10 +1,12 @@
 use anderion_sigint_ml::{IqCapture, IqSample, ReferenceSpectrumEncoder, SpectrumEncoder};
 
 fn capture() -> IqCapture {
-    let samples = (0..128).map(|n| {
-        let phase = std::f64::consts::TAU * 0.125 * n as f64;
-        IqSample::new(phase.cos() as f32, phase.sin() as f32).unwrap()
-    }).collect();
+    let samples = (0..128)
+        .map(|n| {
+            let phase = std::f64::consts::TAU * 0.125 * n as f64;
+            IqSample::new(phase.cos() as f32, phase.sin() as f32).unwrap()
+        })
+        .collect();
     IqCapture::new("enc", 0, 1.0e6, 2.4e9, samples).unwrap()
 }
 
