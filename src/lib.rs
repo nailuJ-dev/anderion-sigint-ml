@@ -49,6 +49,7 @@ mod sequence;
 #[cfg(feature = "server")]
 pub mod service;
 mod similarity;
+mod spectrum_encoder;
 mod synthetic_adapter;
 mod temporal;
 mod types;
@@ -91,6 +92,7 @@ pub use qat::QuantizationAwarePrototypeClassifier;
 pub use quantization::{QuantizedEmbedding, SymmetricQuantizer};
 pub use receiver::{ReceiverProfile, cross_receiver_consistency, normalize_receiver_capture};
 pub use similarity::{SimilarityHit, SimilarityIndex};
+pub use spectrum_encoder::{ReferenceSpectrumEncoder, SpectrumEncoder};
 pub use synthetic_adapter::{SyntheticDataAdapter, SyntheticFeatureGenerator};
 pub use temporal::TemporalVote;
 pub use types::{ClassScore, Embedding, Observation, Prediction};
