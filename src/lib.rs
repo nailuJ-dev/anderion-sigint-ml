@@ -24,6 +24,8 @@ mod drift;
 mod edge;
 mod embedding;
 mod ensemble;
+mod emitter_discovery;
+mod evidence_graph;
 mod error;
 mod evaluation;
 mod explainability;
@@ -75,6 +77,8 @@ pub use edge::{
 };
 pub use embedding::HashProjectionEncoder;
 pub use ensemble::WeightedEnsemble;
+pub use emitter_discovery::{EmitterDiscoverySession, EmitterHypothesis, EmitterHypothesisStatus};
+pub use evidence_graph::{EvidenceEdge, EvidenceEdgeKind, EvidenceNode, SessionEvidenceGraph, WhyResult};
 pub use error::{Result, SdkError};
 pub use evaluation::{ClassificationMetrics, classification_metrics};
 pub use foundation::{FoundationModel, FoundationPooler};
