@@ -157,9 +157,9 @@ impl GoldenSigintModel {
         let training_bytes = serde_json::to_vec(samples)?;
         let context = VerificationContext::new(
             Digest32::from_bytes(&training_bytes),
-            Digest32::from_bytes(b"golden-sigint-reference-config-v1"),
+            Digest32::from_bytes(b"golden-sigint-reference-config-v2"),
             "sigint-reference-ontology-v1",
-            "sigint-golden-path-v1",
+            "sigint-golden-path-v2",
             seed,
         )?;
         let policy = SigintVerificationPolicy::new(0.35, 1.0, None, 10_000, true)?;
