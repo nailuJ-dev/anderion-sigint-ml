@@ -207,8 +207,16 @@ cargo test --all-targets --all-features
 Run the reference demonstration where available:
 
 ```bash
-cargo run --bin golden_demo
+cargo run --bin sigint-golden-demo
 ```
+
+### I/Q feature compatibility
+
+Version 0.6 introduces an explicit I/Q feature schema. New reference extractors cover the complete complex baseband using Hann-windowed FFT power bands. Legacy v0.5 extractors remain available as `IqFeatureSchema::V1NearDc` for compatibility. Models trained on the legacy spectral tail must be kept on v1 or retrained/revalidated before using v2. See `docs/IQ_FEATURE_SCHEMA.md`.
+
+### Deterministic verification and replay
+
+The verified pipeline can bind canonical input, model/configuration digests, ontology/pipeline versions, seed, policy and result into deterministic SHA-256-based evidence. Replay distinguishes `Exact`, `DecisionEquivalent` and `NonReproducible` outcomes. This is reproducibility/integrity evidence, not a digital signature or proof of sensor authenticity. See `docs/ONTOLOGY_AND_DETERMINISTIC_VERIFICATION.md`.
 
 ## Design principles
 

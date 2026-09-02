@@ -130,5 +130,6 @@ pub use golden::{
     load_golden_sigint_training,
 };
 pub use iq::{
-    IqCapture, IqSample, MAX_IQ_SAMPLES, MAX_REFERENCE_SPECTRUM_BINS, ReferenceIqFeatureExtractor,
+    IqCapture, IqFeatureSchema, IqSample, MAX_IQ_SAMPLES, MAX_REFERENCE_SPECTRUM_BINS,
+    ReferenceIqFeatureExtractor,
 };

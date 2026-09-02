@@ -1,3 +1,4 @@
+use rustfft::{FftPlanner, num_complex::Complex};
 use serde::{Deserialize, Serialize};
 
 use crate::{Observation, Result, SdkError};
@@ -109,29 +110,59 @@ impl IqCapture {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IqFeatureSchema {
+    V1NearDc,
+    V2FullBandShifted,
+}
+
+fn legacy_iq_feature_schema() -> IqFeatureSchema {
+    IqFeatureSchema::V1NearDc
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReferenceIqFeatureExtractor {
     spectrum_bins: usize,
+    #[serde(default = "legacy_iq_feature_schema")]
+    schema: IqFeatureSchema,
 }
 
 impl Default for ReferenceIqFeatureExtractor {
     fn default() -> Self {
-        Self { spectrum_bins: 16 }
+        Self {
+            spectrum_bins: 16,
+            schema: IqFeatureSchema::V2FullBandShifted,
+        }
     }
 }
 
 impl ReferenceIqFeatureExtractor {
     pub fn new(spectrum_bins: usize) -> Result<Self> {
+        Self::with_schema(spectrum_bins, IqFeatureSchema::V2FullBandShifted)
+    }
+
+    pub fn legacy_v1(spectrum_bins: usize) -> Result<Self> {
+        Self::with_schema(spectrum_bins, IqFeatureSchema::V1NearDc)
+    }
+
+    pub fn with_schema(spectrum_bins: usize, schema: IqFeatureSchema) -> Result<Self> {
         if spectrum_bins == 0 || spectrum_bins > MAX_REFERENCE_SPECTRUM_BINS {
             return Err(SdkError::DimensionLimit {
                 actual: spectrum_bins,
                 max: MAX_REFERENCE_SPECTRUM_BINS,
             });
         }
-        Ok(Self { spectrum_bins })
+        Ok(Self {
+            spectrum_bins,
+            schema,
+        })
     }
 
     pub fn spectrum_bins(&self) -> usize {
         self.spectrum_bins
+    }
+    pub fn schema(&self) -> IqFeatureSchema {
+        self.schema
     }
     pub fn feature_dim(&self) -> usize {
         BASE_FEATURES + self.spectrum_bins
@@ -213,6 +244,13 @@ impl ReferenceIqFeatureExtractor {
     }
 
     fn normalized_spectrum(&self, capture: &IqCapture) -> Vec<f32> {
+        match self.schema {
+            IqFeatureSchema::V1NearDc => self.normalized_spectrum_v1(capture),
+            IqFeatureSchema::V2FullBandShifted => self.normalized_spectrum_v2(capture),
+        }
+    }
+
+    fn normalized_spectrum_v1(&self, capture: &IqCapture) -> Vec<f32> {
         let n = capture.samples.len() as f64;
         let mut powers = Vec::with_capacity(self.spectrum_bins);
         for bin in 0..self.spectrum_bins {
@@ -228,13 +266,50 @@ impl ReferenceIqFeatureExtractor {
             }
             powers.push(re.mul_add(re, im * im) / (n * n));
         }
-        let total: f64 = powers.iter().sum();
-        if total <= f64::EPSILON {
-            return vec![0.0; self.spectrum_bins];
-        }
-        powers
-            .into_iter()
-            .map(|value| (value / total) as f32)
-            .collect()
+        normalize_powers(powers, self.spectrum_bins)
     }
+
+    fn normalized_spectrum_v2(&self, capture: &IqCapture) -> Vec<f32> {
+        let n = capture.samples.len();
+        let mut buffer = Vec::with_capacity(n);
+        for (index, sample) in capture.samples.iter().enumerate() {
+            let window = if n == 1 {
+                1.0
+            } else {
+                0.5 - 0.5 * (std::f64::consts::TAU * index as f64 / (n - 1) as f64).cos()
+            };
+            buffer.push(Complex::new(
+                f64::from(sample.i) * window,
+                f64::from(sample.q) * window,
+            ));
+        }
+
+        let mut planner = FftPlanner::<f64>::new();
+        let fft = planner.plan_fft_forward(n);
+        fft.process(&mut buffer);
+
+        let shift = n.div_ceil(2);
+        let mut powers = vec![0.0_f64; self.spectrum_bins];
+        for shifted_index in 0..n {
+            let source_index = (shifted_index + shift) % n;
+            // Assign the center of each shifted FFT cell to one of K equal-width
+            // coarse bands over [-Fs/2, +Fs/2). The half-cell offset keeps DC in
+            // the center coarse band for both even and odd capture lengths.
+            let coarse_band = ((2 * shifted_index + 1) * self.spectrum_bins) / (2 * n);
+            let value = buffer[source_index];
+            powers[coarse_band] += value.re.mul_add(value.re, value.im * value.im);
+        }
+        normalize_powers(powers, self.spectrum_bins)
+    }
+}
+
+fn normalize_powers(powers: Vec<f64>, spectrum_bins: usize) -> Vec<f32> {
+    let total: f64 = powers.iter().sum();
+    if total <= f64::EPSILON {
+        return vec![0.0; spectrum_bins];
+    }
+    powers
+        .into_iter()
+        .map(|value| (value / total) as f32)
+        .collect()
 }

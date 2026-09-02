@@ -1,3 +1,12 @@
+## 0.6.0
+
+- Fix reference I/Q spectral coverage across the full complex Nyquist interval.
+- Add explicit `IqFeatureSchema` compatibility versioning; missing legacy schema metadata maps to v1, while new extractors default to v2.
+- Add Hann-windowed complex FFT, fftshift and coarse full-band power aggregation.
+- Add scientific regression tests for signed frequency separation, capture-length stability, normalization and amplitude invariance.
+- Pin the repository toolchain to Rust 1.85.0 and correct the Golden Path binary command.
+- Legacy v0.5 spectral artifacts require explicit v1 use or retraining/revalidation.
+
 ## 0.5.0
 
 - Dense-spectrum component extraction.

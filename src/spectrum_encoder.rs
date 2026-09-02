@@ -1,6 +1,6 @@
 use crate::{
-    Embedding, HashProjectionEncoder, IqCapture, IqSample, ReferenceIqFeatureExtractor, Result,
-    SdkError,
+    Embedding, HashProjectionEncoder, IqCapture, IqFeatureSchema, IqSample,
+    ReferenceIqFeatureExtractor, Result, SdkError,
 };
 use serde::{Deserialize, Serialize};
 
@@ -18,12 +18,30 @@ pub struct ReferenceSpectrumEncoder {
 
 impl ReferenceSpectrumEncoder {
     pub fn new(spectrum_bins: usize, output_dim: usize, seed: u64) -> Result<Self> {
-        let extractor = ReferenceIqFeatureExtractor::new(spectrum_bins)?;
+        Self::new_with_schema(
+            spectrum_bins,
+            output_dim,
+            seed,
+            IqFeatureSchema::V2FullBandShifted,
+        )
+    }
+
+    pub fn new_with_schema(
+        spectrum_bins: usize,
+        output_dim: usize,
+        seed: u64,
+        schema: IqFeatureSchema,
+    ) -> Result<Self> {
+        let extractor = ReferenceIqFeatureExtractor::with_schema(spectrum_bins, schema)?;
         let projection = HashProjectionEncoder::new(extractor.feature_dim(), output_dim, seed)?;
         Ok(Self {
             extractor,
             projection,
         })
+    }
+
+    pub fn feature_schema(&self) -> IqFeatureSchema {
+        self.extractor.schema()
     }
 }
 
