@@ -31,6 +31,7 @@ mod evidence_graph;
 mod explainability;
 mod foundation;
 mod golden;
+mod io;
 mod iq;
 mod metadata;
 mod metric_learning;
@@ -97,7 +98,10 @@ pub use similarity::{SimilarityHit, SimilarityIndex};
 pub use spectrum_encoder::{ReferenceSpectrumEncoder, SpectrumEncoder};
 pub use synthetic_adapter::{SyntheticDataAdapter, SyntheticFeatureGenerator};
 pub use temporal::TemporalVote;
-pub use types::{ClassScore, Embedding, Observation, Prediction};
+pub use types::{
+    ClassScore, DEFAULT_MAX_EMBEDDING_DIM, DEFAULT_MAX_FEATURES, Embedding, MAX_CLASS_SCORES,
+    MAX_LABEL_BYTES, Observation, Prediction,
+};
 pub use uncertainty::normalized_entropy;
 pub use zero_shot::EmbeddingZeroShotClassifier;
 
@@ -126,10 +130,10 @@ pub use verified_pipeline::{VerifiedPipeline, VerifiedPrediction};
 
 pub use golden::{
     GoldenSigintEvaluation, GoldenSigintModel, GoldenSigintReport, GoldenSigintSample,
-    GoldenSigintScenarioFile, GoldenSigintTrainingFile, load_golden_sigint_scenario,
-    load_golden_sigint_training,
+    GoldenSigintScenarioFile, GoldenSigintTrainingFile, default_golden_policy,
+    load_golden_sigint_scenario, load_golden_sigint_training,
 };
 pub use iq::{
     IqCapture, IqFeatureSchema, IqSample, MAX_IQ_SAMPLES, MAX_REFERENCE_SPECTRUM_BINS,
-    ReferenceIqFeatureExtractor,
+    MIN_IQ_SAMPLES, ReferenceIqFeatureExtractor,
 };

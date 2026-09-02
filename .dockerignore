@@ -1,0 +1,15 @@
+target/
+.git/
+.github/
+artifacts/
+coverage/
+*.profraw
+*.profdata
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+.vscode/
+Dockerfile
+Dockerfile.golden

@@ -1,6 +1,6 @@
 [package]
 name = "anderion-sigint-ml"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 rust-version = "1.85"
 license = "Apache-2.0"
@@ -22,7 +22,7 @@ rustfft = "~6.4.1"
 sha2 = "0.10"
 thiserror = "2"
 axum = { version = "0.8", optional = true, features = ["json"] }
-tokio = { version = "1", optional = true, features = ["macros", "rt-multi-thread", "net", "signal"] }
+tokio = { version = "1", optional = true, features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time"] }
 
 [dev-dependencies]
 proptest = "1"
@@ -32,9 +32,18 @@ name = "anderion-sigint-serve"
 path = "src/bin/serve.rs"
 required-features = ["server"]
 
+# Default release profile. `panic = "abort"` is deliberately NOT set here: the
+# server binary must be able to turn a handler panic into a 5xx instead of
+# taking the whole process down, and symbols are needed for post-mortem triage.
 [profile.release]
 lto = "thin"
 codegen-units = 1
+strip = "debuginfo"
+
+# Size-optimised profile for edge/embedded targets that have no supervisor and
+# no crash-reporting pipeline. Build with `cargo build --profile release-edge`.
+[profile.release-edge]
+inherits = "release"
 panic = "abort"
 strip = "symbols"
 

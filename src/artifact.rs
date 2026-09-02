@@ -1,10 +1,9 @@
-use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::io::{constant_time_eq, hex_encode, read_bounded};
 use crate::{Result, SdkError};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -91,7 +90,8 @@ pub fn verify_payload(
             manifest.model_type
         )));
     }
-    if sha256_hex(payload) != manifest.payload_sha256.to_ascii_lowercase() {
+    let expected = manifest.payload_sha256.to_ascii_lowercase();
+    if !constant_time_eq(sha256_hex(payload).as_bytes(), expected.as_bytes()) {
         return Err(SdkError::DigestMismatch);
     }
     Ok(())
@@ -109,28 +109,6 @@ pub fn load_verified_payload(
     Ok((manifest, payload))
 }
 
-fn read_bounded(path: &Path, max_bytes: usize) -> Result<Vec<u8>> {
-    let file = File::open(path)?;
-    let limit = u64::try_from(max_bytes)
-        .unwrap_or(u64::MAX)
-        .saturating_add(1);
-    let mut reader = file.take(limit);
-    let mut bytes = Vec::with_capacity(max_bytes.min(1024 * 1024));
-    reader.read_to_end(&mut bytes)?;
-    if bytes.len() > max_bytes {
-        return Err(SdkError::ArtifactTooLarge {
-            actual: bytes.len(),
-            max: max_bytes,
-        });
-    }
-    Ok(bytes)
-}
-
 fn sha256_hex(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    let mut out = String::with_capacity(64);
-    for byte in digest {
-        out.push_str(&format!("{byte:02x}"));
-    }
-    out
+    hex_encode(&Sha256::digest(bytes))
 }

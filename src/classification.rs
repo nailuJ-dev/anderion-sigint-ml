@@ -173,6 +173,10 @@ pub(crate) fn softmax_scores(logits: &[(String, f32)]) -> Result<Vec<ClassScore>
     for ((label, _), exp) in logits.iter().zip(exps) {
         scores.push(ClassScore::new(label.clone(), exp / sum)?);
     }
-    scores.sort_by(|a, b| b.probability().total_cmp(&a.probability()));
+    scores.sort_by(|a, b| {
+        b.probability()
+            .total_cmp(&a.probability())
+            .then_with(|| a.label().cmp(b.label()))
+    });
     Ok(scores)
 }

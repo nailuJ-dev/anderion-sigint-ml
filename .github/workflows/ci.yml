@@ -19,7 +19,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --all-features -- -D warnings
-      - run: cargo test --all-features
+      - run: cargo build --locked --all-features
+      - run: cargo test --locked --all-features
       - run: cargo run --quiet --bin sigint-golden-demo
       - run: RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
       - name: Verify standalone Golden Path boundary

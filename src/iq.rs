@@ -4,11 +4,18 @@ use serde::{Deserialize, Serialize};
 use crate::{Observation, Result, SdkError};
 
 pub const MAX_IQ_SAMPLES: usize = 16_384;
+/// Minimum capture length accepted by [`IqCapture`].
+///
+/// The V2 reference spectrum applies a symmetric Hann window, whose first and
+/// last taps are exactly zero. Below this length the window destroys most or all
+/// of the signal (at `n == 2` it zeroes the capture entirely) and the resulting
+/// spectral tail is meaningless rather than merely imprecise.
+pub const MIN_IQ_SAMPLES: usize = 16;
 pub const MAX_REFERENCE_SPECTRUM_BINS: usize = 64;
 const BASE_FEATURES: usize = 12;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "IqSampleWire")]
 pub struct IqSample {
     i: f32,
     q: f32,
@@ -33,7 +40,7 @@ impl IqSample {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "IqCaptureWire")]
 pub struct IqCapture {
     id: String,
     timestamp_ms: u64,
@@ -80,6 +87,11 @@ impl IqCapture {
         if self.samples.is_empty() {
             return Err(SdkError::EmptyFeatures);
         }
+        if self.samples.len() < MIN_IQ_SAMPLES {
+            return Err(SdkError::InvalidArgument(format!(
+                "I/Q capture must contain at least {MIN_IQ_SAMPLES} samples"
+            )));
+        }
         if self.samples.len() > MAX_IQ_SAMPLES {
             return Err(SdkError::DimensionLimit {
                 actual: self.samples.len(),
@@ -121,6 +133,7 @@ fn legacy_iq_feature_schema() -> IqFeatureSchema {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "ReferenceIqFeatureExtractorWire")]
 pub struct ReferenceIqFeatureExtractor {
     spectrum_bins: usize,
     #[serde(default = "legacy_iq_feature_schema")]
@@ -170,6 +183,14 @@ impl ReferenceIqFeatureExtractor {
 
     pub fn extract(&self, capture: &IqCapture) -> Result<Observation> {
         capture.validate()?;
+        if self.spectrum_bins > capture.samples.len() {
+            // More coarse bands than FFT cells leaves bands structurally empty and
+            // breaks the "DC sits in the centre band" guarantee of the V2 mapping.
+            return Err(SdkError::DimensionLimit {
+                actual: self.spectrum_bins,
+                max: capture.samples.len(),
+            });
+        }
         let n = capture.samples.len() as f64;
         let mut sum_i = 0.0_f64;
         let mut sum_q = 0.0_f64;
@@ -312,4 +333,59 @@ fn normalize_powers(powers: Vec<f64>, spectrum_bins: usize) -> Vec<f32> {
         .into_iter()
         .map(|value| (value / total) as f32)
         .collect()
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IqSampleWire {
+    i: f32,
+    q: f32,
+}
+
+impl TryFrom<IqSampleWire> for IqSample {
+    type Error = SdkError;
+
+    fn try_from(wire: IqSampleWire) -> Result<Self> {
+        Self::new(wire.i, wire.q)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IqCaptureWire {
+    id: String,
+    timestamp_ms: u64,
+    sample_rate_hz: f64,
+    center_frequency_hz: f64,
+    samples: Vec<IqSample>,
+}
+
+impl TryFrom<IqCaptureWire> for IqCapture {
+    type Error = SdkError;
+
+    fn try_from(wire: IqCaptureWire) -> Result<Self> {
+        Self::new(
+            wire.id,
+            wire.timestamp_ms,
+            wire.sample_rate_hz,
+            wire.center_frequency_hz,
+            wire.samples,
+        )
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReferenceIqFeatureExtractorWire {
+    spectrum_bins: usize,
+    #[serde(default = "legacy_iq_feature_schema")]
+    schema: IqFeatureSchema,
+}
+
+impl TryFrom<ReferenceIqFeatureExtractorWire> for ReferenceIqFeatureExtractor {
+    type Error = SdkError;
+
+    fn try_from(wire: ReferenceIqFeatureExtractorWire) -> Result<Self> {
+        Self::with_schema(wire.spectrum_bins, wire.schema)
+    }
 }

@@ -1,5 +1,5 @@
-[build]
-rustflags = ["-Dwarnings"]
-
+# `-D warnings` deliberately lives in CI (see .github/workflows/ci.yml) and not
+# here: forcing it on every local build breaks contributors the day a new
+# compiler introduces a lint, for no safety gain.
 [term]
 color = "always"

@@ -51,6 +51,10 @@ pub(crate) fn normalize(raw: Vec<(String, f32)>) -> Result<Vec<ClassScore>> {
     for (label, value) in raw {
         out.push(ClassScore::new(label, value / sum)?);
     }
-    out.sort_by(|a, b| b.probability().total_cmp(&a.probability()));
+    out.sort_by(|a, b| {
+        b.probability()
+            .total_cmp(&a.probability())
+            .then_with(|| a.label().cmp(b.label()))
+    });
     Ok(out)
 }
