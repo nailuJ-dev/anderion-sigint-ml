@@ -16,7 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo generate-lockfile
+      # No `cargo generate-lockfile`: the committed Cargo.lock is what ships, so
+      # it is what must be audited. Regenerating it here would audit a resolution
+      # that no artifact ever used.
+      - name: Fail if Cargo.lock is missing or stale
+        run: cargo metadata --locked --format-version 1 > /dev/null
       - uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

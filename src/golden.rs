@@ -1,6 +1,4 @@
 use std::collections::BTreeSet;
-use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -13,8 +11,39 @@ use crate::{
     VerifiedPipeline,
 };
 
+use crate::io::read_bounded;
+
 const MAX_GOLDEN_FILE_BYTES: usize = 32 * 1024 * 1024;
+const MAX_GOLDEN_SAMPLES: usize = 65_536;
 const DEFAULT_EMBEDDING_DIM: usize = 24;
+const GOLDEN_UNKNOWN_THRESHOLD: f32 = 0.35;
+const GOLDEN_CONFIG_VERSION: &str = "golden-sigint-reference-config-v3";
+const GOLDEN_ONTOLOGY_VERSION: &str = "sigint-reference-ontology-v1";
+const GOLDEN_PIPELINE_VERSION: &str = "sigint-golden-path-v3";
+
+/// Everything that changes the numeric behaviour of the reference model.
+///
+/// Serialized and hashed into [`VerificationContext::config_digest`] so that two
+/// runs with different hyper-parameters can never present matching context
+/// digests. Add a field here whenever a new knob is introduced.
+#[derive(Debug, Serialize)]
+struct GoldenSigintConfig<'a> {
+    config_version: &'a str,
+    extractor: ReferenceIqFeatureExtractor,
+    embedding_dim: usize,
+    unknown_threshold: f32,
+    policy: &'a SigintVerificationPolicy,
+    anomaly_detector: &'a str,
+}
+
+/// Default verification policy for the reference Golden Path.
+///
+/// `max_uncertainty` is a real gate: normalized entropy above this value forces
+/// abstention. Tune it against your own fixtures rather than treating it as a
+/// constant of nature.
+pub fn default_golden_policy() -> Result<SigintVerificationPolicy> {
+    SigintVerificationPolicy::new(GOLDEN_UNKNOWN_THRESHOLD, 0.95, None, 10_000, true)
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -33,6 +62,16 @@ impl GoldenSigintSample {
         }
         capture.validate()?;
         Ok(Self { label, capture })
+    }
+
+    /// Validate in place, without cloning the underlying capture.
+    pub fn validate(&self) -> Result<()> {
+        if self.label.trim().is_empty() || self.label.len() > 4_096 {
+            return Err(SdkError::InvalidArgument(
+                "golden SIGINT label must be non-empty and bounded".into(),
+            ));
+        }
+        self.capture.validate()
     }
 
     pub fn label(&self) -> &str {
@@ -128,6 +167,14 @@ pub struct GoldenSigintModel {
 
 impl GoldenSigintModel {
     pub fn fit(samples: &[GoldenSigintSample], seed: u64) -> Result<Self> {
+        Self::fit_with_policy(samples, seed, default_golden_policy()?)
+    }
+
+    pub fn fit_with_policy(
+        samples: &[GoldenSigintSample],
+        seed: u64,
+        policy: SigintVerificationPolicy,
+    ) -> Result<Self> {
         if samples.len() < 4 {
             return Err(SdkError::InvalidArgument(
                 "golden SIGINT model requires at least four labeled captures".into(),
@@ -152,17 +199,29 @@ impl GoldenSigintModel {
         }
         let classifier = PrototypeClassifier::fit(&labeled_embeddings)?;
         let anomaly = DiagonalGaussianAnomalyDetector::fit(&embeddings)?;
-        let pipeline = Pipeline::new(Arc::new(encoder), Arc::new(classifier), 0.35)?
-            .with_anomaly_detector(Arc::new(anomaly))?;
+        let pipeline = Pipeline::new(
+            Arc::new(encoder),
+            Arc::new(classifier),
+            GOLDEN_UNKNOWN_THRESHOLD,
+        )?
+        .with_anomaly_detector(Arc::new(anomaly))?;
         let training_bytes = serde_json::to_vec(samples)?;
+        let config = GoldenSigintConfig {
+            config_version: GOLDEN_CONFIG_VERSION,
+            extractor,
+            embedding_dim: DEFAULT_EMBEDDING_DIM,
+            unknown_threshold: GOLDEN_UNKNOWN_THRESHOLD,
+            policy: &policy,
+            anomaly_detector: "diagonal-gaussian-v1",
+        };
+        let config_bytes = serde_json::to_vec(&config)?;
         let context = VerificationContext::new(
             Digest32::from_bytes(&training_bytes),
-            Digest32::from_bytes(b"golden-sigint-reference-config-v2"),
-            "sigint-reference-ontology-v1",
-            "sigint-golden-path-v2",
+            Digest32::from_bytes(&config_bytes),
+            GOLDEN_ONTOLOGY_VERSION,
+            GOLDEN_PIPELINE_VERSION,
             seed,
         )?;
-        let policy = SigintVerificationPolicy::new(0.35, 1.0, None, 10_000, true)?;
         Ok(Self {
             extractor,
             pipeline: VerifiedPipeline::new(pipeline, context, policy),
@@ -261,14 +320,16 @@ impl GoldenSigintModel {
 pub fn load_golden_sigint_training(path: impl AsRef<Path>) -> Result<GoldenSigintTrainingFile> {
     let bytes = read_bounded(path.as_ref(), MAX_GOLDEN_FILE_BYTES)?;
     let file: GoldenSigintTrainingFile = serde_json::from_slice(&bytes)?;
-    if file.samples.len() > 65_536 {
+    if file.samples.len() > MAX_GOLDEN_SAMPLES {
         return Err(SdkError::DimensionLimit {
             actual: file.samples.len(),
-            max: 65_536,
+            max: MAX_GOLDEN_SAMPLES,
         });
     }
+    // `GoldenSigintSample` revalidates on deserialization; this is a cheap
+    // defence-in-depth pass that borrows instead of deep-cloning every capture.
     for sample in &file.samples {
-        GoldenSigintSample::new(sample.label.clone(), sample.capture.clone())?;
+        sample.validate()?;
     }
     Ok(file)
 }
@@ -287,21 +348,4 @@ pub fn load_golden_sigint_scenario(path: impl AsRef<Path>) -> Result<GoldenSigin
         ));
     }
     Ok(file)
-}
-
-fn read_bounded(path: &Path, max_bytes: usize) -> Result<Vec<u8>> {
-    let file = File::open(path)?;
-    let limit = u64::try_from(max_bytes)
-        .unwrap_or(u64::MAX)
-        .saturating_add(1);
-    let mut reader = file.take(limit);
-    let mut bytes = Vec::with_capacity(max_bytes.min(1024 * 1024));
-    reader.read_to_end(&mut bytes)?;
-    if bytes.len() > max_bytes {
-        return Err(SdkError::ArtifactTooLarge {
-            actual: bytes.len(),
-            max: max_bytes,
-        });
-    }
-    Ok(bytes)
 }

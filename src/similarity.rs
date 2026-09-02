@@ -76,7 +76,11 @@ impl SimilarityIndex {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        hits.sort_by(|a, b| b.similarity.total_cmp(&a.similarity));
+        hits.sort_by(|a, b| {
+            b.similarity
+                .total_cmp(&a.similarity)
+                .then_with(|| a.id.cmp(&b.id))
+        });
         hits.truncate(k.min(hits.len()));
         Ok(hits)
     }

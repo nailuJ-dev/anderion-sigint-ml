@@ -5,7 +5,7 @@ use crate::{ConsistencyReport, Observation, Prediction, Result, SdkError};
 
 const MAX_CONTEXT_TEXT_BYTES: usize = 256;
 const MAX_FIXED_POINT_SCALE: u32 = 1_000_000_000;
-const CERTIFICATE_ALGORITHM_VERSION: u32 = 1;
+const CERTIFICATE_ALGORITHM_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Digest32([u8; 32]);
@@ -38,17 +38,12 @@ impl Digest32 {
     }
 
     pub fn to_hex(&self) -> String {
-        const HEX: &[u8; 16] = b"0123456789abcdef";
-        let mut output = String::with_capacity(64);
-        for byte in self.0 {
-            output.push(HEX[(byte >> 4) as usize] as char);
-            output.push(HEX[(byte & 0x0f) as usize] as char);
-        }
-        output
+        crate::io::hex_encode(&self.0)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "VerificationContextWire")]
 pub struct VerificationContext {
     model_digest: Digest32,
     config_digest: Digest32,
@@ -96,6 +91,7 @@ impl VerificationContext {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "SigintVerificationPolicyWire")]
 pub struct SigintVerificationPolicy {
     min_class_confidence: f32,
     max_uncertainty: f32,
@@ -160,6 +156,7 @@ pub enum ReplayStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "ResultCertificateWire")]
 pub struct ResultCertificate {
     algorithm_version: u32,
     input_digest: Digest32,
@@ -170,6 +167,11 @@ pub struct ResultCertificate {
     decision: VerificationDecision,
     ontology_valid: bool,
     ontology_violation_count: usize,
+    /// SHA-256 over every other field. Recomputed and checked on deserialization
+    /// so a certificate cannot be assembled field-by-field from untrusted JSON.
+    /// This is an integrity check, not a signature: it proves the record was not
+    /// hand-edited, not that it came from a trusted issuer.
+    self_digest: Digest32,
 }
 
 impl ResultCertificate {
@@ -199,6 +201,46 @@ impl ResultCertificate {
     }
     pub fn ontology_violation_count(&self) -> usize {
         self.ontology_violation_count
+    }
+    pub fn self_digest(&self) -> Digest32 {
+        self.self_digest
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn seal(
+        algorithm_version: u32,
+        input_digest: Digest32,
+        context_digest: Digest32,
+        policy_digest: Digest32,
+        exact_result_digest: Digest32,
+        decision_digest: Digest32,
+        decision: VerificationDecision,
+        ontology_valid: bool,
+        ontology_violation_count: usize,
+    ) -> Self {
+        let self_digest = hash_certificate_body(
+            algorithm_version,
+            input_digest,
+            context_digest,
+            policy_digest,
+            exact_result_digest,
+            decision_digest,
+            decision,
+            ontology_valid,
+            ontology_violation_count,
+        );
+        Self {
+            algorithm_version,
+            input_digest,
+            context_digest,
+            policy_digest,
+            exact_result_digest,
+            decision_digest,
+            decision,
+            ontology_valid,
+            ontology_violation_count,
+            self_digest,
+        }
     }
 }
 
@@ -234,35 +276,38 @@ impl DeterministicVerifier {
         } else {
             VerificationDecision::Accept
         };
-        Ok(ResultCertificate {
-            algorithm_version: CERTIFICATE_ALGORITHM_VERSION,
-            input_digest: hash_observation(observation),
-            context_digest: hash_context(context),
-            policy_digest: hash_policy(policy),
-            exact_result_digest: hash_prediction_exact(prediction),
-            decision_digest: hash_prediction_decision(prediction, policy.fixed_point_scale)?,
+        Ok(ResultCertificate::seal(
+            CERTIFICATE_ALGORITHM_VERSION,
+            hash_observation(observation),
+            hash_context(context),
+            hash_policy(policy),
+            hash_prediction_exact(prediction),
+            hash_prediction_decision(prediction, policy.fixed_point_scale)?,
             decision,
-            ontology_valid: consistency.is_valid(),
-            ontology_violation_count: consistency.violations().len(),
-        })
+            consistency.is_valid(),
+            consistency.violations().len(),
+        ))
     }
 
     pub fn compare_replay(
         original: &ResultCertificate,
         replayed: &ResultCertificate,
     ) -> ReplayStatus {
+        // Any divergence in the bound context, the applied policy, the taken
+        // decision, or the semantic-consistency outcome is a hard failure. Only a
+        // difference in the exact numeric result may be downgraded to
+        // `DecisionEquivalent`.
         if original.algorithm_version != replayed.algorithm_version
             || original.input_digest != replayed.input_digest
             || original.context_digest != replayed.context_digest
             || original.policy_digest != replayed.policy_digest
             || original.decision != replayed.decision
+            || original.ontology_valid != replayed.ontology_valid
+            || original.ontology_violation_count != replayed.ontology_violation_count
         {
             return ReplayStatus::NonReproducible;
         }
-        if original.exact_result_digest == replayed.exact_result_digest
-            && original.ontology_valid == replayed.ontology_valid
-            && original.ontology_violation_count == replayed.ontology_violation_count
-        {
+        if original.exact_result_digest == replayed.exact_result_digest {
             ReplayStatus::Exact
         } else if original.decision_digest == replayed.decision_digest {
             ReplayStatus::DecisionEquivalent
@@ -470,5 +515,130 @@ fn hex_nibble(value: u8) -> Result<u8> {
         _ => Err(SdkError::InvalidArgument(
             "invalid SHA-256 hex digest".into(),
         )),
+    }
+}
+
+fn decision_tag(decision: VerificationDecision) -> u8 {
+    match decision {
+        VerificationDecision::Accept => 0,
+        VerificationDecision::Abstain => 1,
+        VerificationDecision::Review => 2,
+        VerificationDecision::Reject => 3,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn hash_certificate_body(
+    algorithm_version: u32,
+    input_digest: Digest32,
+    context_digest: Digest32,
+    policy_digest: Digest32,
+    exact_result_digest: Digest32,
+    decision_digest: Digest32,
+    decision: VerificationDecision,
+    ontology_valid: bool,
+    ontology_violation_count: usize,
+) -> Digest32 {
+    let mut hasher = domain_hasher(b"anderion-sigint-certificate-v2");
+    hasher.update(algorithm_version.to_le_bytes());
+    hasher.update(input_digest.as_bytes());
+    hasher.update(context_digest.as_bytes());
+    hasher.update(policy_digest.as_bytes());
+    hasher.update(exact_result_digest.as_bytes());
+    hasher.update(decision_digest.as_bytes());
+    hasher.update([decision_tag(decision)]);
+    hasher.update([u8::from(ontology_valid)]);
+    hasher.update((ontology_violation_count as u64).to_le_bytes());
+    finish_hash(hasher)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VerificationContextWire {
+    model_digest: Digest32,
+    config_digest: Digest32,
+    ontology_version: String,
+    pipeline_version: String,
+    seed: u64,
+}
+
+impl TryFrom<VerificationContextWire> for VerificationContext {
+    type Error = SdkError;
+
+    fn try_from(wire: VerificationContextWire) -> Result<Self> {
+        Self::new(
+            wire.model_digest,
+            wire.config_digest,
+            wire.ontology_version,
+            wire.pipeline_version,
+            wire.seed,
+        )
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SigintVerificationPolicyWire {
+    min_class_confidence: f32,
+    max_uncertainty: f32,
+    max_anomaly_score: Option<f32>,
+    fixed_point_scale: u32,
+    require_ontology_consistency: bool,
+}
+
+impl TryFrom<SigintVerificationPolicyWire> for SigintVerificationPolicy {
+    type Error = SdkError;
+
+    fn try_from(wire: SigintVerificationPolicyWire) -> Result<Self> {
+        Self::new(
+            wire.min_class_confidence,
+            wire.max_uncertainty,
+            wire.max_anomaly_score,
+            wire.fixed_point_scale,
+            wire.require_ontology_consistency,
+        )
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ResultCertificateWire {
+    algorithm_version: u32,
+    input_digest: Digest32,
+    context_digest: Digest32,
+    policy_digest: Digest32,
+    exact_result_digest: Digest32,
+    decision_digest: Digest32,
+    decision: VerificationDecision,
+    ontology_valid: bool,
+    ontology_violation_count: usize,
+    self_digest: Digest32,
+}
+
+impl TryFrom<ResultCertificateWire> for ResultCertificate {
+    type Error = SdkError;
+
+    fn try_from(wire: ResultCertificateWire) -> Result<Self> {
+        if wire.algorithm_version != CERTIFICATE_ALGORITHM_VERSION {
+            return Err(SdkError::SchemaMismatch {
+                expected: CERTIFICATE_ALGORITHM_VERSION,
+                actual: wire.algorithm_version,
+            });
+        }
+        let sealed = Self::seal(
+            wire.algorithm_version,
+            wire.input_digest,
+            wire.context_digest,
+            wire.policy_digest,
+            wire.exact_result_digest,
+            wire.decision_digest,
+            wire.decision,
+            wire.ontology_valid,
+            wire.ontology_violation_count,
+        );
+        if sealed.self_digest != wire.self_digest {
+            return Err(SdkError::DigestMismatch);
+        }
+        Ok(sealed)
     }
 }

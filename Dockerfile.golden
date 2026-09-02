@@ -1,13 +1,24 @@
 # syntax=docker/dockerfile:1.7
-FROM rust:1.85-bookworm AS builder
+
+ARG RUST_IMAGE=rust:1.85-bookworm
+ARG RUNTIME_IMAGE=gcr.io/distroless/cc-debian12:nonroot
+
+FROM ${RUST_IMAGE} AS builder
 WORKDIR /src
 COPY . .
-RUN cargo build --release --bin sigint-golden-demo
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/src/target,sharing=locked \
+    cargo build --release --locked --bin sigint-golden-demo \
+ && mkdir -p /out/artifacts \
+ && cp target/release/sigint-golden-demo /out/sigint-golden-demo
 
-FROM debian:bookworm-slim
+# Same hardened runtime as the service image: no shell, no package manager.
+FROM ${RUNTIME_IMAGE}
 WORKDIR /app
-COPY --from=builder /src/target/release/sigint-golden-demo /usr/local/bin/sigint-golden-demo
-COPY demo-data ./demo-data
-RUN mkdir -p /app/artifacts && chown -R 65532:65532 /app
-USER 65532:65532
-ENTRYPOINT ["sigint-golden-demo"]
+COPY --from=builder /out/sigint-golden-demo /usr/local/bin/sigint-golden-demo
+COPY --chown=nonroot:nonroot demo-data ./demo-data
+# Pre-created and owned by nonroot: the demo writes artifacts/golden-path/result.json
+# and the runtime image has no shell to mkdir at start-up.
+COPY --from=builder --chown=nonroot:nonroot /out/artifacts ./artifacts
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/sigint-golden-demo"]

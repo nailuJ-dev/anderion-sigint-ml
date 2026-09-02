@@ -75,7 +75,11 @@ impl Calibrator for TemperatureScaler {
         for (score, value) in scores.iter().zip(transformed) {
             out.push(ClassScore::new(score.label().to_string(), value / sum)?);
         }
-        out.sort_by(|a, b| b.probability().total_cmp(&a.probability()));
+        out.sort_by(|a, b| {
+            b.probability()
+                .total_cmp(&a.probability())
+                .then_with(|| a.label().cmp(b.label()))
+        });
         Ok(out)
     }
 }
